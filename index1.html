@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Area Checker</title>
+    <!-- Include Leaflet CSS and Turf.js for spatial analysis -->
+    <link rel="stylesheet" href="https://unpkg.com" />
+    <script src="https://cloudflare.com"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            margin: 15px 0;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            width: 100%;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .error { color: #d9534f; }
+        .success { color: #5cb85c; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>Check Your Boundary</h2>
+    <p>Enter your address to see which zone you are in:</p>
+    <input type="text" id="addressInput" placeholder="e.g., 1600 Amphitheatre Pkwy, Mountain View, CA">
+    <button onclick="checkAddress()">Check Address</button>
+    <div id="result"></div>
+</div>
+
+<script>
+    let geojsonLayer = null;
+
+    // Load your boundaries GeoJSON file on startup
+    fetch('boundaries.geojson')
+        .then(response => response.json())
+        .then(data => {
+            geojsonLayer = data;
+        })
+        .catch(err => console.error("Error loading boundaries:", err));
+
+    async function checkAddress() {
+        const address = document.getElementById('addressInput').value;
+        const resultDiv = document.getElementById('result');
+        
+        if (!address) {
+            resultDiv.className = "error";
+            resultDiv.innerText = "Please enter an address.";
+            return;
+        }
+
+        resultDiv.className = "";
+        resultDiv.innerText = "Searching...";
+
+        try {
+            // Use OpenStreetMap Nominatim API to geocode the address
+            const url = `https://openstreetmap.org{encodeURIComponent(address)}`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data || data.length === 0) {
+                resultDiv.className = "error";
+                resultDiv.innerText = "Address not found. Please try a more specific address.";
+                return;
+            }
+
+            const lat = parseFloat(data[0].lat);
+            const lon = parseFloat(data[0].lon);
+            const pt = turf.point([lon, lat]);
+
+            let foundBoundary = null;
+
+            // Check which polygon contains the point using Turf.js
+            for (let feature of geojsonLayer.features) {
+                if (turf.booleanPointInPolygon(pt, feature)) {
+                    foundBoundary = feature.properties.name || "Unnamed Boundary";
+                    break;
+                }
+            }
+
+            if (foundBoundary) {
+                resultDiv.className = "success";
+                resultDiv.innerText = `This address is inside: ${foundBoundary}`;
+            } else {
+                resultDiv.className = "error";
+                resultDiv.innerText = "This address is not located within any of our mapped boundaries.";
+            }
+
+        } catch (error) {
+            console.error(error);
+            resultDiv.className = "error";
+            resultDiv.innerText = "An error occurred while checking the address.";
+        }
+    }
+</script>
+
+</body>
+</html>
